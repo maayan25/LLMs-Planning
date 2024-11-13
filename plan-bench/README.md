@@ -77,6 +77,7 @@ The engines are not limited to the ones listed below.
 - Other LLMs (currently supported: BLOOM):
   - Just specify the LLM name
     - bloom etc.
+    - Llama 3.2 (3B)
 
 For BLOOM:
 - Assign the cache dir of the model to the environment variable BLOOM_CACHE_DIR `BLOOM_CACHE_DIR=/path/to/bloom/cache/dir`

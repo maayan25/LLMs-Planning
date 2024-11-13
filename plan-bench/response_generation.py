@@ -21,8 +21,11 @@ class ResponseGenerator:
         self.ignore_existing = ignore_existing
         self.max_gpt_response_length = 500
         self.data = self.read_config(config_file)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if self.engine == 'bloom':
             self.model = self.get_bloom()
+        elif self.engine == 'llama':
+            self.model = self.get_llama()
         elif 'finetuned' in self.engine:
             # print(self.engine)
             assert self.engine.split(':')[1] is not None
@@ -42,6 +45,10 @@ class ResponseGenerator:
         model = AutoModelForCausalLM.from_pretrained("bigscience/bloom", cache_dir=cache_dir,
                                                      local_files_only=False, load_in_8bit=True, device_map='auto',
                                                      max_memory=max_memory_mapping)
+        return {'model': model, 'tokenizer': tokenizer}
+    def get_llama(self):
+        model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-3B").to(self.device)
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B")
         return {'model': model, 'tokenizer': tokenizer}
 
     def get_responses(self, task_name, specified_instances = [], run_till_completion=False):
@@ -78,7 +85,7 @@ class ResponseGenerator:
                 stop_statement = "[STATEMENT]"
                 if 'caesar' in self.data['domain_name']:
                     stop_statement = caesar_encode(stop_statement)
-                llm_response = send_query(query, self.engine, self.max_gpt_response_length, model=self.model, stop=stop_statement)
+                llm_response = send_query(query, self.engine, self.max_gpt_response_length, self.device, model=self.model, stop=stop_statement)
                 if not llm_response:
                     failed_instances.append(instance['instance_id'])
                     print(f"Failed instance: {instance['instance_id']}")

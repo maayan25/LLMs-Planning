@@ -1,7 +1,11 @@
-from transformers import StoppingCriteriaList, StoppingCriteria
+from transformers import StoppingCriteriaList, StoppingCriteria, AutoTokenizer, AutoModel
 import openai
 import os
-openai.api_key = os.environ["OPENAI_API_KEY"]
+import torch
+
+#### UNCOMMENT for using GPT models
+# openai.api_key = os.environ["OPENAI_API_KEY"]
+
 def generate_from_bloom(model, tokenizer, query, max_tokens):
     encoded_input = tokenizer(query, return_tensors='pt')
     stop = tokenizer("[PLAN END]", return_tensors='pt')
@@ -10,13 +14,23 @@ def generate_from_bloom(model, tokenizer, query, max_tokens):
                                       temperature=0, top_p=1)
     return tokenizer.decode(output_sequences[0], skip_special_tokes=True)
 
+def generate_from_llama(model, tokenizer, query, max_tokens, device):
+    encoded_input = tokenizer(query, return_tensors='pt').to(device)
+    stop = tokenizer("[PLAN END]", return_tensors='pt')
+    stoplist = StoppingCriteriaList([stop])
+    output_sequences = model.generate(input_ids=encoded_input['input_ids'].cuda(), max_new_tokens=max_tokens,
+                                      temperature=0.1, top_p=1)  # TODO check temperature
+    return tokenizer.decode(output_sequences[0], skip_special_tokes=True)
 
-def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]"):
+
+def send_query(query, engine, max_tokens, device, model=None, stop="[STATEMENT]"):
     max_token_err_flag = False
-    if engine == 'bloom':
-
+    if engine == 'bloom' or engine == 'llama':
         if model:
-            response = generate_from_bloom(model['model'], model['tokenizer'], query, max_tokens)
+            if engine == 'bloom':
+                response = generate_from_bloom(model['model'], model['tokenizer'], query, max_tokens)
+            else:
+                response = generate_from_llama(model['model'], model['tokenizer'], query, max_tokens, device)
             response = response.replace(query, '')
             resp_string = ""
             for line in response.split('\n'):
@@ -47,12 +61,12 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]"):
         else:
             assert model is not None
     elif '_chat' in engine:
-        
+
         eng = engine.split('_')[0]
         # print('chatmodels', eng)
-        messages=[
-        {"role": "system", "content": "You are the planner assistant who comes up with correct plans."},
-        {"role": "user", "content": query}
+        messages = [
+            {"role": "system", "content": "You are the planner assistant who comes up with correct plans."},
+            {"role": "user", "content": query}
         ]
         try:
             response = openai.ChatCompletion.create(model=eng, messages=messages, temperature=0)
@@ -60,7 +74,7 @@ def send_query(query, engine, max_tokens, model=None, stop="[STATEMENT]"):
             max_token_err_flag = True
             print("[-]: Failed GPT3 query execution: {}".format(e))
         text_response = response['choices'][0]['message']['content'] if not max_token_err_flag else ""
-        return text_response.strip()        
+        return text_response.strip()
     else:
         try:
             response = openai.Completion.create(
